@@ -391,7 +391,7 @@ export class PrintComponent implements OnInit {
       this.patient = await this.db.getPatientByPatientId(this.searchPid.trim());
       if (!this.patient) { this.errorMsg = `Patient "${this.searchPid}" not found.`; }
       else {
-        this.records = await this.db.getMedicalRecords(this.patient.id!);
+       this.records = await this.db.getMedicalRecordsByPatient(this.patient.patientId!); 
       }
     } catch { this.errorMsg = 'Failed to load patient.'; }
     this.loading = false;
