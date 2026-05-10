@@ -1,4 +1,4 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { Component, inject, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
@@ -6,6 +6,7 @@ import { SidebarComponent } from '../shared/sidebar.component';
 import { FirestoreService } from '../../services/firestore.service';
 import { AuthService } from '../../services/auth.service';
 import { Patient, MedicalRecord } from '../../models/models';
+import { Firestore, collection, query, where, orderBy, onSnapshot } from '@angular/fire/firestore';
 
 @Component({
   selector: 'app-records',
@@ -24,7 +25,6 @@ import { Patient, MedicalRecord } from '../../models/models';
           <div *ngIf="successMsg" class="alert alert-success">✅ {{ successMsg }}</div>
           <div *ngIf="errorMsg" class="alert alert-danger">⚠️ {{ errorMsg }}</div>
 
-          <!-- Search Patient -->
           <div *ngIf="!patient" class="card">
             <div class="card-title">🔍 Find Patient to Update</div>
             <div class="search-bar">
@@ -39,9 +39,7 @@ import { Patient, MedicalRecord } from '../../models/models';
             </p>
           </div>
 
-          <!-- Patient Info Card -->
           <div *ngIf="patient">
-
           <div *ngIf="!showHistory">
           <div class="card" style="background:linear-gradient(135deg,#56ccf2,#2f80ed,#1a56a0);color:white;border:none;">
               <div style="display:flex;justify-content:space-between;align-items:flex-start;">
@@ -58,14 +56,12 @@ import { Patient, MedicalRecord } from '../../models/models';
                     Blood: {{ patient.bloodType }}
                   </div>
                 </div>
-                <button class="btn btn-secondary btn-sm" (click)="patient=null;records=[];showHistory=false">✖ Close</button>
+                <button class="btn btn-secondary btn-sm" (click)="closePatient()">✖ Close</button>
               </div>
             </div>
 
-            <!-- Add New Record Form -->
             <div class="card">
               <div class="card-title">➕ Add Medical Record / Checkup</div>
-
               <div class="form-grid">
                 <div class="form-group">
                   <label>Visit Date *</label>
@@ -81,11 +77,11 @@ import { Patient, MedicalRecord } from '../../models/models';
               <div class="form-grid-3">
                 <div class="form-group">
                   <label>Height (cm)</label>
-                  <input type="number" [(ngModel)]="recordForm.heightCm" (input)="calcBMI()" placeholder="e.g. 165" />
+                  <input type="number" [(ngModel)]="recordForm.heightCm" placeholder="e.g. 165" />
                 </div>
                 <div class="form-group">
                   <label>Weight (kg)</label>
-                  <input type="number" [(ngModel)]="recordForm.weightKg" (input)="calcBMI()" placeholder="e.g. 60" />
+                  <input type="number" [(ngModel)]="recordForm.weightKg" placeholder="e.g. 60" />
                 </div>
                 <div class="form-group">
                   <label>BMI</label>
@@ -124,13 +120,12 @@ import { Patient, MedicalRecord } from '../../models/models';
                 {{ saving ? '⏳ Saving...' : '💾 Save as Draft' }}
               </button>
 
-              <!-- History Preview -->
-              <div class="card" *ngIf="!showHistory" style="margin-top:16px;">
+              <div class="card" style="margin-top:16px;">
                 <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
-                  <span>📂 Medical History ({{ records.length }} records)</span>
-                  <button class="btn btn-primary btn-sm" (click)="showHistory = true">
-                    View all records →
-                  </button>
+                  <span>📂 Medical History ({{ records.length }} records)
+                    <span *ngIf="isLive" style="font-size:11px;color:#27ae60;margin-left:6px;">🟢 Live</span>
+                  </span>
+                  <button class="btn btn-primary btn-sm" (click)="showHistory = true">View all records →</button>
                 </div>
                 <div *ngIf="records.length === 0" class="text-muted" style="padding:20px 0;">
                   No medical records yet for this patient.
@@ -144,14 +139,13 @@ import { Patient, MedicalRecord } from '../../models/models';
                   <div *ngIf="r.chiefComplaint" style="margin-top:6px;color:#555;">{{ r.chiefComplaint }}</div>
                 </div>
                 <div *ngIf="records.length > 2" style="text-align:center;font-size:12px;color:#888;padding:8px;border:1px dashed #cce0f5;border-radius:8px;margin-top:4px;">
-                  + {{ records.length - 2 }} more record(s) — click "View all records" to see full history
+                  + {{ records.length - 2 }} more record(s) — click "View all records"
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Full History Page -->
         <div *ngIf="showHistory && patient" class="page-slide-enter">
           <div style="background:linear-gradient(135deg,#56ccf2,#2f80ed,#1a56a0);border-radius:16px;padding:14px 20px;display:flex;align-items:center;gap:12px;margin-bottom:16px;">
             <button class="btn btn-secondary btn-sm" (click)="showHistory = false">← Back</button>
@@ -231,10 +225,11 @@ import { Patient, MedicalRecord } from '../../models/models';
     </div>
   `
 })
-export class RecordsComponent implements OnInit {
+export class RecordsComponent implements OnInit, OnDestroy {
   private db = inject(FirestoreService);
   private auth = inject(AuthService);
   private route = inject(ActivatedRoute);
+  private firestore = inject(Firestore);
 
   today = new Date().toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   searchPid = '';
@@ -251,6 +246,10 @@ export class RecordsComponent implements OnInit {
   successMsg = '';
   errorMsg = '';
   duplicateWarning = false;
+  isLive = false;
+
+  // ✅ Store unsubscribe to clean up listener
+  private unsubscribeRecords: (() => void) | null = null;
 
   get bmiDisplay() {
     const bmi = this.db.calcBMI(this.recordForm.heightCm, this.recordForm.weightKg);
@@ -268,6 +267,25 @@ export class RecordsComponent implements OnInit {
     });
   }
 
+  ngOnDestroy() {
+    this.stopRecordsListener();
+  }
+
+  stopRecordsListener() {
+    if (this.unsubscribeRecords) {
+      this.unsubscribeRecords();
+      this.unsubscribeRecords = null;
+    }
+  }
+
+  closePatient() {
+    this.stopRecordsListener();
+    this.patient = null;
+    this.records = [];
+    this.showHistory = false;
+    this.isLive = false;
+  }
+
   async loadPatient() {
     if (!this.searchPid.trim()) {
       this.errorMsg = 'Enter a Patient ID.';
@@ -280,13 +298,42 @@ export class RecordsComponent implements OnInit {
       if (!this.patient) {
         this.errorMsg = `Patient "${this.searchPid}" not found.`;
       } else {
-        await this.loadRecords();
+        // ✅ Start real-time listener for this patient's records
+        this.startRecordsListener(this.patient.patientId);
       }
     } catch (e) {
       console.error(e);
       this.errorMsg = 'Failed to load patient.';
     }
     this.loadingPatient = false;
+  }
+
+  // ✅ REAL-TIME: Records update instantly when doctor finalizes or staff adds
+  startRecordsListener(patientId: string) {
+    this.stopRecordsListener(); // clean up old listener first
+    this.loadingRecords = true;
+
+    const q = query(
+      collection(this.firestore, 'medicalRecords'),
+      where('patientId', '==', patientId),
+      orderBy('createdAt', 'desc')
+    );
+
+    this.unsubscribeRecords = onSnapshot(q,
+      (snapshot) => {
+        this.records = snapshot.docs
+          .map(d => ({ id: d.id, ...(d.data() as any) } as MedicalRecord))
+          .sort((a, b) => b.visitDate.localeCompare(a.visitDate));
+        this.applyFilter();
+        this.loadingRecords = false;
+        this.isLive = true;
+      },
+      (error) => {
+        console.warn('Records snapshot error:', error);
+        // fallback to one-time fetch
+        this.loadRecords();
+      }
+    );
   }
 
   async loadRecords() {
@@ -313,7 +360,6 @@ export class RecordsComponent implements OnInit {
     this.clearAlerts();
 
     try {
-      // ✅ CONSISTENCY: Validate record before saving
       const bmi = this.db.calcBMI(this.recordForm.heightCm, this.recordForm.weightKg);
       const rec: any = {
         patientId: this.patient.patientId,
@@ -334,7 +380,6 @@ export class RecordsComponent implements OnInit {
         createdByRole: 'staff'
       };
 
-      // ✅ CONSISTENCY: Validate vitals before saving
       const validationError = this.db.validateMedicalRecord(rec);
       if (validationError) {
         this.errorMsg = validationError;
@@ -342,7 +387,6 @@ export class RecordsComponent implements OnInit {
         return;
       }
 
-      // ✅ CONSISTENCY: Check for duplicate visit date
       const duplicate = this.records.find(r => r.visitDate === rec.visitDate);
       if (duplicate) {
         this.duplicateWarning = true;
@@ -351,16 +395,14 @@ export class RecordsComponent implements OnInit {
       }
       this.duplicateWarning = false;
 
-      // ✅ ATOMICITY: Save record + update patient atomically
       await this.db.addMedicalRecordAtomic(rec, this.patient.id!);
 
       this.successMsg = 'Draft saved! Awaiting doctor to finalize.';
       this.recordForm = this.emptyRecord();
-      await this.loadRecords();
+      // ✅ No need to reload — real-time listener updates automatically
 
     } catch (e) {
       console.error('SAVE ERROR:', e);
-      // ✅ ATOMICITY: If anything failed, nothing was saved
       this.errorMsg = 'Failed to save record. Transaction was rolled back.';
     }
 
@@ -370,11 +412,10 @@ export class RecordsComponent implements OnInit {
   async deleteRecord(r: MedicalRecord) {
     if (!r.id || !confirm('Delete this medical record?')) return;
     try {
-      // ✅ ISOLATION: Uses transaction to safely delete
       await this.db.updateMedicalRecordIsolated(r.id, { deleted: true });
       await this.db.deleteMedicalRecord(r.id);
       this.successMsg = 'Record deleted.';
-      await this.loadRecords();
+      // ✅ No need to reload — listener auto-updates
     } catch {
       this.errorMsg = 'Failed to delete record.';
     }
