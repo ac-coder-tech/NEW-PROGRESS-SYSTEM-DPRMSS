@@ -163,9 +163,7 @@ import { Firestore, collection, query, where, orderBy, onSnapshot } from '@angul
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
               <select [(ngModel)]="filterYear" (change)="applyFilter()" style="padding:8px 12px;border:1.5px solid #c2dff5;border-radius:8px;font-size:13px;color:#1a56a0;background:#f8fcff;">
                 <option value="">All Years</option>
-                <option value="2026">2026</option>
-                <option value="2025">2025</option>
-                <option value="2024">2024</option>
+                <option *ngFor="let y of availableYears" [value]="y.toString()">{{ y }}</option>
               </select>
               <select [(ngModel)]="filterMonth" (change)="applyFilter()" style="padding:8px 12px;border:1.5px solid #c2dff5;border-radius:8px;font-size:13px;color:#1a56a0;background:#f8fcff;">
                 <option value="">All Months</option>
@@ -247,6 +245,7 @@ export class RecordsComponent implements OnInit, OnDestroy {
   errorMsg = '';
   duplicateWarning = false;
   isLive = false;
+  availableYears: number[] = [];
 
   // ✅ Store unsubscribe to clean up listener
   private unsubscribeRecords: (() => void) | null = null;
@@ -259,6 +258,7 @@ export class RecordsComponent implements OnInit, OnDestroy {
   recordForm: any = this.emptyRecord();
 
   async ngOnInit() {
+    this.generateYears(); 
     this.route.queryParams.subscribe(async params => {
       if (params['pid']) {
         this.searchPid = params['pid'];
@@ -453,4 +453,14 @@ export class RecordsComponent implements OnInit, OnDestroy {
       return matchYear && matchMonth && matchSearch;
     });
   }
+  
+  generateYears() {
+  const currentYear = new Date().getFullYear();
+  const years = [];
+  for (let y = currentYear; y >= 2020; y--) {
+    years.push(y);
+  }
+  this.availableYears = years;
+}
+
 }

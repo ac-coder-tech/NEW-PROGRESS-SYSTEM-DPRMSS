@@ -84,7 +84,7 @@ import { Patient, MedicalRecord } from '../../../models/models';
               <div *ngFor="let a of todayAppointments"
                 style="border:1px solid #eef2fb;border-radius:10px;padding:12px;margin-bottom:10px;font-size:13px;">
                 <strong style="color:#1a56a0;">{{ a.patientName }}</strong>
-                <span style="margin-left:10px;color:#888;">{{ a.appointmentTime }}</span>
+                <span style="margin-left:10px;color:#888;">{{ formatTime(a.appointmentTime) }}</span>
                 <span class="badge badge-info" style="margin-left:8px;">{{ a.purpose }}</span>
                 <div *ngIf="a.notes" style="margin-top:4px;color:#555;">📝 {{ a.notes }}</div>
               </div>
@@ -153,7 +153,7 @@ import { Patient, MedicalRecord } from '../../../models/models';
                       <tr *ngFor="let a of allAppointments">
                         <td><strong>{{ a.patientName }}</strong></td>
                         <td>{{ a.appointmentDate }}</td>
-                        <td>{{ a.appointmentTime }}</td>
+                        <td>{{ formatTime(a.appointmentTime) }}</td>
                         <td>{{ a.purpose }}</td>
                         <td><span class="badge badge-info">{{ a.status }}</span></td>
                         <td>{{ a.notes || '—' }}</td>
@@ -476,6 +476,15 @@ export class DoctorDashboardComponent implements OnInit {
       year: 'numeric', month: 'long', day: 'numeric'
     });
   }
+  formatTime(time: string): string {
+  if (!time) return '—';
+  const [hourStr, minute] = time.split(':');
+  let hour = parseInt(hourStr, 10);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  hour = hour % 12 || 12;
+  return `${hour}:${minute} ${ampm}`;
+  }
+
 
   clearAlerts() { this.successMsg = ''; this.errorMsg = ''; }
 

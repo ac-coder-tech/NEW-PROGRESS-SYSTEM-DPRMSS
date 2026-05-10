@@ -48,7 +48,6 @@ import { StaffUser } from '../../models/models';
                 <select [(ngModel)]="form.role">
                   <option value="Admin">Admin</option>
                   <option value="Doctor">Doctor</option>
-                  <option value="Nurse">Nurse</option>
                   <option value="Staff">Staff</option>
                 </select>
               </div>
@@ -87,7 +86,6 @@ import { StaffUser } from '../../models/models';
                     style="padding:5px 8px;border:1px solid #dde3f0;border-radius:6px;font-size:12px;">
                     <option value="Admin">Admin</option>
                     <option value="Doctor">Doctor</option>
-                    <option value="Nurse">Nurse</option>
                     <option value="Staff">Staff</option>
                   </select>
                   <button class="btn btn-danger btn-sm" (click)="deleteStaff(s)">🗑</button>
