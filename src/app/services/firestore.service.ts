@@ -1,90 +1,103 @@
 import { Injectable, inject } from '@angular/core';
 import {
-  Firestore, collection, collectionData, doc, docData,
+  Firestore, collection, doc,
   addDoc, updateDoc, deleteDoc, query, where, orderBy,
-  getDocs, getDoc, setDoc, Timestamp, limit, startAfter,
-  getCountFromServer
+  getDocs, getDoc, Timestamp, limit,
+  getCountFromServer, getDocsFromCache, getDocFromCache
 } from '@angular/fire/firestore';
-import { Observable, from } from 'rxjs';
 import { Patient, MedicalRecord, Appointment, StaffUser } from '../models/models';
 
 @Injectable({ providedIn: 'root' })
 export class FirestoreService {
   private firestore = inject(Firestore);
 
-  // ============================================================
-  // PATIENTS
-  // ============================================================
+  private async getDocsWithOffline(q: any): Promise<any> {
+    try {
+      return await getDocs(q);
+    } catch (e) {
+      console.warn('Offline — reading from cache...');
+      return await getDocsFromCache(q);
+    }
+  }
 
   async generatePatientId(): Promise<string> {
     const year = new Date().getFullYear();
     const col = collection(this.firestore, 'patients');
-    const snap = await getDocs(col);
-    const num = String(snap.size + 1).padStart(4, '0');
+    const snap = await this.getDocsWithOffline(col);
+    let maxNum = 0;
+    snap.docs.forEach((d: any) => {
+      const data = d.data() as any;
+      const id: string = data.patientId || '';
+      const parts = id.split('-');
+      if (parts.length === 3) {
+        const num = parseInt(parts[2], 10);
+        if (!isNaN(num) && num > maxNum) maxNum = num;
+      }
+    });
+    const num = String(maxNum + 1).padStart(4, '0');
     return `PAT-${year}-${num}`;
   }
 
-  async addPatient(patient: Patient): Promise<string> {
-  try {
-    console.log('ADDING PATIENT...', patient);
-
-    const ref = await addDoc(collection(this.firestore, 'patients'), {
-      ...patient,
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now()
-    });
-
-    console.log('SUCCESS:', ref.id);
-    return ref.id;
-
-  } catch (err) {
-    console.error('FIRESTORE ERROR:', err);
-    throw err;
+  async addPatient(patient: any): Promise<string> {
+    try {
+      const ref = await addDoc(collection(this.firestore, 'patients'), {
+        ...(patient as any),
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+      return ref.id;
+    } catch (err) {
+      console.error('FIRESTORE ERROR:', err);
+      throw err;
+    }
   }
-}
 
-  async updatePatient(id: string, data: Partial<Patient>): Promise<void> {
+  async updatePatient(id: string, data: any): Promise<void> {
     await updateDoc(doc(this.firestore, 'patients', id), {
-      ...data,
+      ...(data as any),
       updatedAt: Timestamp.now()
     });
   }
 
   async deletePatient(id: string): Promise<void> {
     await deleteDoc(doc(this.firestore, 'patients', id));
-    // Also delete their medical records
     const q = query(
-  collection(this.firestore, 'medicalRecords'),
-  where('patientId', '==', id)
-);
-    const snap = await getDocs(q);
-    const deletes = snap.docs.map(d => deleteDoc(d.ref));
+      collection(this.firestore, 'medicalRecords'),
+      where('patientId', '==', id)
+    );
+    const snap = await this.getDocsWithOffline(q);
+    const deletes = snap.docs.map((d: any) => deleteDoc(d.ref));
     await Promise.all(deletes);
   }
 
   async getPatient(id: string): Promise<Patient | null> {
-    const snap = await getDoc(doc(this.firestore, 'patients', id));
-    return snap.exists() ? { id: snap.id, ...snap.data() } as Patient : null;
+    try {
+      const snap = await getDoc(doc(this.firestore, 'patients', id));
+      return snap.exists() ? { id: snap.id, ...(snap.data() as any) } as Patient : null;
+    } catch (e) {
+      const snap = await getDocFromCache(doc(this.firestore, 'patients', id));
+      return snap.exists() ? { id: snap.id, ...(snap.data() as any) } as Patient : null;
+    }
   }
 
   async getPatientByPatientId(patientId: string): Promise<Patient | null> {
     const q = query(collection(this.firestore, 'patients'), where('patientId', '==', patientId));
-    const snap = await getDocs(q);
+    const snap = await this.getDocsWithOffline(q);
     if (snap.empty) return null;
     const d = snap.docs[0];
-    return { id: d.id, ...d.data() } as Patient;
+    return { id: d.id, ...(d.data() as any) } as Patient;
   }
 
   async getAllPatients(): Promise<Patient[]> {
     const q = query(collection(this.firestore, 'patients'), orderBy('createdAt', 'desc'));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as Patient));
+    const snap = await this.getDocsWithOffline(q);
+    return snap.docs.map((d: any) => ({ id: d.id, ...(d.data() as any) } as Patient));
   }
 
   async searchPatients(term: string): Promise<Patient[]> {
     const all = await this.getAllPatients();
     const t = term.toLowerCase();
-    return all.filter(p =>
+    return all.filter((p: any) =>
       p.firstName?.toLowerCase().includes(t) ||
       p.lastName?.toLowerCase().includes(t) ||
       p.patientId?.toLowerCase().includes(t) ||
@@ -93,8 +106,13 @@ export class FirestoreService {
   }
 
   async getTotalPatients(): Promise<number> {
-    const snap = await getCountFromServer(collection(this.firestore, 'patients'));
-    return snap.data().count;
+    try {
+      const snap = await getCountFromServer(collection(this.firestore, 'patients'));
+      return snap.data().count;
+    } catch (e) {
+      const snap = await getDocsFromCache(collection(this.firestore, 'patients'));
+      return snap.size;
+    }
   }
 
   async getMonthNewPatients(): Promise<number> {
@@ -104,64 +122,62 @@ export class FirestoreService {
       collection(this.firestore, 'patients'),
       where('createdAt', '>=', Timestamp.fromDate(startOfMonth))
     );
-    const snap = await getCountFromServer(q);
-    return snap.data().count;
+    try {
+      const snap = await getCountFromServer(q);
+      return snap.data().count;
+    } catch (e) {
+      const snap = await getDocsFromCache(q);
+      return snap.size;
+    }
   }
 
   async getRecentPatients(count: number = 5): Promise<Patient[]> {
     const q = query(collection(this.firestore, 'patients'), orderBy('createdAt', 'desc'), limit(count));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as Patient));
+    const snap = await this.getDocsWithOffline(q);
+    return snap.docs.map((d: any) => ({ id: d.id, ...(d.data() as any) } as Patient));
   }
-
-  // ============================================================
-  // MEDICAL RECORDS
-  // ============================================================
 
   async addMedicalRecord(record: any): Promise<string> {
-  try {
-    console.log('ADDING MEDICAL RECORD...', record);
-
-    const ref = await addDoc(collection(this.firestore, 'medicalRecords'), {
-      ...record,
-      createdAt: Timestamp.now()
-    });
-
-    console.log('SUCCESS MEDICAL RECORD ID:', ref.id);
-    return ref.id;
-
-  } catch (err) {
-    console.error('FIRESTORE MEDICAL ERROR:', err);
-    throw err;
+    try {
+      const ref = await addDoc(collection(this.firestore, 'medicalRecords'), {
+        ...(record as any),
+        createdAt: Timestamp.now()
+      });
+      return ref.id;
+    } catch (err) {
+      console.error('FIRESTORE MEDICAL ERROR:', err);
+      throw err;
+    }
   }
-}
 
   async getMedicalRecords(patientId: string): Promise<MedicalRecord[]> {
-  const q = query(collection(this.firestore, 'medicalRecords'), orderBy('createdAt', 'desc'));
+    const q = query(collection(this.firestore, 'medicalRecords'), orderBy('createdAt', 'desc'));
+    const snap = await this.getDocsWithOffline(q);
+    const all = snap.docs.map((d: any) => ({ id: d.id, ...(d.data() as any) } as MedicalRecord));
+    console.log("ALL FIREBASE RECORDS:", all);
+    console.log("LOOKING FOR patientId:", patientId);
+    return all;
+  }
 
-  const snap = await getDocs(q);
-  const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as MedicalRecord));
-
-  console.log("ALL FIREBASE RECORDS:", all);
-  console.log("LOOKING FOR patientId:", patientId);
-
-  return all;
-}
   async getTodayVisits(): Promise<number> {
     const today = new Date().toISOString().split('T')[0];
     const q = query(collection(this.firestore, 'medicalRecords'), where('visitDate', '==', today));
-    const snap = await getCountFromServer(q);
-    return snap.data().count;
+    try {
+      const snap = await getCountFromServer(q);
+      return snap.data().count;
+    } catch (e) {
+      const snap = await getDocsFromCache(q);
+      return snap.size;
+    }
   }
 
- async deleteMedicalRecord(id: string): Promise<void> {
+  async deleteMedicalRecord(id: string): Promise<void> {
     await deleteDoc(doc(this.firestore, 'medicalRecords', id));
   }
- 
 
-  async updateMedicalRecord(id: string, data: Partial<MedicalRecord>): Promise<void> {
+  async updateMedicalRecord(id: string, data: any): Promise<void> {
     await updateDoc(doc(this.firestore, 'medicalRecords', id), {
-      ...data,
+      ...(data as any),
       updatedAt: Timestamp.now()
     });
   }
@@ -172,17 +188,13 @@ export class FirestoreService {
       where('patientId', '==', patientId),
       orderBy('createdAt', 'desc')
     );
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as MedicalRecord));
+    const snap = await this.getDocsWithOffline(q);
+    return snap.docs.map((d: any) => ({ id: d.id, ...(d.data() as any) } as MedicalRecord));
   }
 
-  // ============================================================
-  // APPOINTMENTS
-  // ============================================================
-
-  async addAppointment(appt: Appointment): Promise<string> {
+  async addAppointment(appt: any): Promise<string> {
     const ref = await addDoc(collection(this.firestore, 'appointments'), {
-      ...appt,
+      ...(appt as any),
       createdAt: Timestamp.now()
     });
     return ref.id;
@@ -190,28 +202,32 @@ export class FirestoreService {
 
   async getAllAppointments(): Promise<Appointment[]> {
     const q = query(collection(this.firestore, 'appointments'), orderBy('appointmentDate', 'asc'));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as Appointment));
+    const snap = await this.getDocsWithOffline(q);
+    return snap.docs.map((d: any) => ({ id: d.id, ...(d.data() as any) } as Appointment));
   }
 
   async getAppointmentsByDate(date: string): Promise<Appointment[]> {
     const q = query(collection(this.firestore, 'appointments'), where('appointmentDate', '==', date));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as Appointment));
+    const snap = await this.getDocsWithOffline(q);
+    return snap.docs.map((d: any) => ({ id: d.id, ...(d.data() as any) } as Appointment));
   }
 
- // AFTER (fixed - counts ALL today's appointments)
-async getTodayAppointments(): Promise<number> {
-  const today = new Date().toISOString().split('T')[0];
-  const q = query(
-    collection(this.firestore, 'appointments'),
-    where('appointmentDate', '==', today)  // ✅ No status filter
-  );
-  const snap = await getCountFromServer(q);
-  return snap.data().count;
-}
+  async getTodayAppointments(): Promise<number> {
+    const today = new Date().toISOString().split('T')[0];
+    const q = query(
+      collection(this.firestore, 'appointments'),
+      where('appointmentDate', '==', today)
+    );
+    try {
+      const snap = await getCountFromServer(q);
+      return snap.data().count;
+    } catch (e) {
+      const snap = await getDocsFromCache(q);
+      return snap.size;
+    }
+  }
 
-  async updateAppointment(id: string, data: Partial<Appointment>): Promise<void> {
+  async updateAppointment(id: string, data: any): Promise<void> {
     await updateDoc(doc(this.firestore, 'appointments', id), data);
   }
 
@@ -219,27 +235,19 @@ async getTodayAppointments(): Promise<number> {
     await deleteDoc(doc(this.firestore, 'appointments', id));
   }
 
-  // ============================================================
-  // STAFF
-  // ============================================================
-
   async getAllStaff(): Promise<StaffUser[]> {
     const q = query(collection(this.firestore, 'staff'), orderBy('createdAt', 'desc'));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as StaffUser));
+    const snap = await this.getDocsWithOffline(q);
+    return snap.docs.map((d: any) => ({ id: d.id, ...(d.data() as any) } as StaffUser));
   }
 
-  async updateStaff(id: string, data: Partial<StaffUser>): Promise<void> {
+  async updateStaff(id: string, data: any): Promise<void> {
     await updateDoc(doc(this.firestore, 'staff', id), data);
   }
 
   async deleteStaff(id: string): Promise<void> {
     await deleteDoc(doc(this.firestore, 'staff', id));
   }
-
-  // ============================================================
-  // UTILITIES
-  // ============================================================
 
   calcBMI(height: number, weight: number): number {
     if (!height || !weight) return 0;
