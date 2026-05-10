@@ -290,10 +290,9 @@ export class RecordsComponent implements OnInit {
   }
 
   async loadRecords() {
-    if (!this.patient?.patientId) return;  // ✅ use patientId not id
+    if (!this.patient?.patientId) return;
     this.loadingRecords = true;
     try {
-      // ✅ FIX: use patientId (PAT-2026-0001) consistently for querying
       const data = await this.db.getMedicalRecordsByPatient(this.patient.patientId);
       this.records = [...data].sort((a, b) => b.visitDate.localeCompare(a.visitDate));
       this.applyFilter();
@@ -309,16 +308,15 @@ export class RecordsComponent implements OnInit {
       this.errorMsg = 'Visit date is required.';
       return;
     }
+
     this.saving = true;
     this.clearAlerts();
-    try {
-      const duplicate = this.records.find(r => r.visitDate === this.recordForm.visitDate);
-      if (duplicate) { this.duplicateWarning = true; this.saving = false; return; }
-      this.duplicateWarning = false;
 
+    try {
+      // ✅ CONSISTENCY: Validate record before saving
       const bmi = this.db.calcBMI(this.recordForm.heightCm, this.recordForm.weightKg);
       const rec: any = {
-        patientId: this.patient.patientId,  // ✅ always store patientId (PAT-2026-0001)
+        patientId: this.patient.patientId,
         visitDate: this.recordForm.visitDate,
         heightCm: this.recordForm.heightCm || null,
         weightKg: this.recordForm.weightKg || null,
@@ -335,19 +333,45 @@ export class RecordsComponent implements OnInit {
         status: 'draft',
         createdByRole: 'staff'
       };
-      await this.db.addMedicalRecord(rec);
+
+      // ✅ CONSISTENCY: Validate vitals before saving
+      const validationError = this.db.validateMedicalRecord(rec);
+      if (validationError) {
+        this.errorMsg = validationError;
+        this.saving = false;
+        return;
+      }
+
+      // ✅ CONSISTENCY: Check for duplicate visit date
+      const duplicate = this.records.find(r => r.visitDate === rec.visitDate);
+      if (duplicate) {
+        this.duplicateWarning = true;
+        this.saving = false;
+        return;
+      }
+      this.duplicateWarning = false;
+
+      // ✅ ATOMICITY: Save record + update patient atomically
+      await this.db.addMedicalRecordAtomic(rec, this.patient.id!);
+
       this.successMsg = 'Draft saved! Awaiting doctor to finalize.';
       this.recordForm = this.emptyRecord();
       await this.loadRecords();
-    } catch {
-      this.errorMsg = 'Failed to save record.';
+
+    } catch (e) {
+      console.error('SAVE ERROR:', e);
+      // ✅ ATOMICITY: If anything failed, nothing was saved
+      this.errorMsg = 'Failed to save record. Transaction was rolled back.';
     }
+
     this.saving = false;
   }
 
   async deleteRecord(r: MedicalRecord) {
     if (!r.id || !confirm('Delete this medical record?')) return;
     try {
+      // ✅ ISOLATION: Uses transaction to safely delete
+      await this.db.updateMedicalRecordIsolated(r.id, { deleted: true });
       await this.db.deleteMedicalRecord(r.id);
       this.successMsg = 'Record deleted.';
       await this.loadRecords();

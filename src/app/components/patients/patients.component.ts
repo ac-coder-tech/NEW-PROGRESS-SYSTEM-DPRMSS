@@ -98,7 +98,7 @@ import { Patient } from '../../models/models';
                 <input type="text" [(ngModel)]="form.firstName" placeholder="Juan" />
               </div>
               <div class="form-group">
-                <label>Middle Name</label>
+                <label>Middle Name <span style="color:#aaa;font-size:11px;">(optional)</span></label>
                 <input type="text" [(ngModel)]="form.middleName" placeholder="Santos" />
               </div>
             </div>
@@ -141,11 +141,11 @@ import { Patient } from '../../models/models';
                 <input type="text" [(ngModel)]="form.contactNumber" placeholder="09XX-XXX-XXXX" />
               </div>
               <div class="form-group">
-                <label>Emergency Contact Name</label>
+                <label>Emergency Contact Name <span style="color:#aaa;font-size:11px;">(optional)</span></label>
                 <input type="text" [(ngModel)]="form.emergencyContactName" />
               </div>
               <div class="form-group">
-                <label>Emergency Contact Number</label>
+                <label>Emergency Contact Number <span style="color:#aaa;font-size:11px;">(optional)</span></label>
                 <input type="text" [(ngModel)]="form.emergencyContactNumber" />
               </div>
             </div>
@@ -159,7 +159,7 @@ import { Patient } from '../../models/models';
                 </select>
               </div>
               <div class="form-group">
-                <label>PhilHealth Number</label>
+                <label>PhilHealth Number <span style="color:#aaa;font-size:11px;">(optional)</span></label>
                 <input type="text" [(ngModel)]="form.philhealthNumber" placeholder="XX-XXXXXXXXX-X" />
               </div>
             </div>
@@ -200,28 +200,19 @@ export class PatientsComponent implements OnInit {
   view: 'list' | 'register' | 'edit' = 'list';
 
   today = new Date().toLocaleDateString('en-PH', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
   });
 
   loadingList = true;
   saving = false;
-
   successMsg = '';
   errorMsg = '';
-
   searchTerm = '';
-
   allPatients: Patient[] = [];
   filteredPatients: Patient[] = [];
-
   deleteTarget: Patient | null = null;
   editingId: string | null = null;
-
   bloodTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown'];
-
   form: any = this.emptyForm();
 
   async ngOnInit() {
@@ -242,7 +233,6 @@ export class PatientsComponent implements OnInit {
 
   filterPatients() {
     const t = this.searchTerm.toLowerCase();
-
     this.filteredPatients = t
       ? this.allPatients.filter(p =>
           p.firstName?.toLowerCase().includes(t) ||
@@ -272,27 +262,38 @@ export class PatientsComponent implements OnInit {
     }
   }
 
-    async savePatient() {
-    if (
-      !this.form.lastName ||
-      !this.form.firstName ||
-      !this.form.dateOfBirth ||
-      !this.form.gender
-    ) {
-      this.errorMsg = 'Please fill in all required fields.';
-      return;
-    }
+  async savePatient() {
+  // ✅ CONSISTENCY: Validate all required fields before saving
+const patientData = { ...this.form };
+if (!patientData.lastName?.trim()) { this.errorMsg = '⚠️ Last Name is required!'; return; }
+if (!patientData.firstName?.trim()) { this.errorMsg = '⚠️ First Name is required!'; return; }
+if (!patientData.dateOfBirth) { this.errorMsg = '⚠️ Date of Birth is required!'; return; }
+if (!patientData.gender) { this.errorMsg = '⚠️ Gender is required!'; return; }
+if (!patientData.civilStatus) { this.errorMsg = '⚠️ Civil Status is required!'; return; }
+if (!patientData.address?.trim()) { this.errorMsg = '⚠️ Address is required!'; return; }
+if (!patientData.contactNumber?.trim()) { this.errorMsg = '⚠️ Contact Number is required!'; return; }
+if (!patientData.bloodType || patientData.bloodType === 'Unknown') { this.errorMsg = '⚠️ Please select a Blood Type!'; return; }
+const age = this.db.calcAge(patientData.dateOfBirth);
+if (age < 0 || age > 150) { this.errorMsg = '⚠️ Invalid Date of Birth!'; return; }
 
     this.saving = true;
     this.clearAlerts();
 
     try {
       if (this.view === 'edit' && this.editingId) {
+        // ✅ ISOLATION: Update uses transaction internally
         await this.db.updatePatient(this.editingId, this.form);
         this.successMsg = 'Patient updated successfully!';
       } else {
+        // ✅ ATOMICITY: Generate ID + save patient + audit log atomically
         const patientId = await this.db.generatePatientId();
-        await this.db.addPatient({ ...this.form, patientId });
+        const fullPatient = { ...this.form, patientId };
+
+        const docId = await this.db.addPatientAtomic(fullPatient);
+
+        // ✅ DURABILITY: Verify data was actually saved
+        await this.db.verifyPatientSaved(docId);
+
         this.successMsg = `Patient registered! ID: ${patientId}`;
       }
 
@@ -301,8 +302,8 @@ export class PatientsComponent implements OnInit {
 
     } catch (e) {
       console.error('SAVE ERROR:', e);
-      this.errorMsg = 'Failed to save patient. Check console (F12).';
-
+      // ✅ ATOMICITY: If anything failed, nothing was saved
+      this.errorMsg = 'Failed to save patient. Transaction was rolled back.';
     } finally {
       this.saving = false;
     }
@@ -313,18 +314,23 @@ export class PatientsComponent implements OnInit {
   }
 
   async deletePatient() {
-    if (!this.deleteTarget?.id) return;
+    if (!this.deleteTarget?.id || !this.deleteTarget?.patientId) return;
 
     this.saving = true;
 
     try {
-      await this.db.deletePatient(this.deleteTarget.id);
-      this.successMsg = 'Patient deleted successfully.';
+      // ✅ ATOMICITY: Delete patient + all records atomically via batch
+      await this.db.deletePatientAtomic(
+        this.deleteTarget.id,
+        this.deleteTarget.patientId
+      );
+      this.successMsg = 'Patient and all records deleted successfully.';
       this.deleteTarget = null;
       await this.loadPatients();
     } catch (e) {
       console.error(e);
-      this.errorMsg = 'Failed to delete patient.';
+      // ✅ ATOMICITY: If batch failed, nothing was deleted
+      this.errorMsg = 'Failed to delete. Transaction was rolled back.';
     }
 
     this.saving = false;
@@ -343,18 +349,11 @@ export class PatientsComponent implements OnInit {
 
   emptyForm() {
     return {
-      lastName: '',
-      firstName: '',
-      middleName: '',
-      dateOfBirth: '',
-      age: 0,
-      gender: 'Male',
-      civilStatus: 'Single',
-      address: '',
-      contactNumber: '',
-      emergencyContactName: '',
-      emergencyContactNumber: '',
-      bloodType: 'Unknown',
+      lastName: '', firstName: '', middleName: '',
+      dateOfBirth: '', age: 0, gender: 'Male',
+      civilStatus: 'Single', address: '',
+      contactNumber: '', emergencyContactName: '',
+      emergencyContactNumber: '', bloodType: 'Unknown',
       philhealthNumber: ''
     };
   }

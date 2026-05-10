@@ -433,15 +433,15 @@ export class DoctorDashboardComponent implements OnInit {
   }
 
   async loadRecords() {
-    if (!this.selectedPatient?.patientId) return;
-    try {
-      const all = await this.db.getMedicalRecords(this.selectedPatient.patientId);
-      this.patientRecords = all
-        .filter((r: any) => r.patientId === this.selectedPatient!.patientId)
-        .sort((a: any, b: any) => b.visitDate.localeCompare(a.visitDate));
-      this.draftRecords = this.patientRecords.filter(r => r.status !== 'finalized');
-    } catch (e) { console.error(e); }
-  }
+  if (!this.selectedPatient?.patientId) return;
+  try {
+    // ✅ FIX: use getMedicalRecordsByPatient for correct filtering
+    const all = await this.db.getMedicalRecordsByPatient(this.selectedPatient.patientId);
+    this.patientRecords = [...all].sort((a: any, b: any) =>
+      b.visitDate.localeCompare(a.visitDate));
+    this.draftRecords = this.patientRecords.filter(r => r.status !== 'finalized');
+  } catch (e) { console.error(e); }
+}
 
   startFinalize(r: MedicalRecord) {
     this.finalizeTarget = r;
