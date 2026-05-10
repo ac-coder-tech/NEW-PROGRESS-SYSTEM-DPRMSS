@@ -63,26 +63,62 @@ export class FirestoreService {
     }
   }
 
+  // ✅ UPDATED: Move to deletedPatients + deletedRecords instead of permanent delete
   async deletePatientAtomic(patientDocId: string, patientId: string): Promise<void> {
     try {
       const batch = writeBatch(this.firestore);
+
+      // Get patient data first to copy to deletedPatients
+      const patientSnap = await getDoc(doc(this.firestore, 'patients', patientDocId));
+      const patientData = patientSnap.data();
+
+      // Get all medical records for this patient
       const q = query(
         collection(this.firestore, 'medicalRecords'),
         where('patientId', '==', patientId)
       );
       const snap = await this.getDocsWithOffline(q);
+
+      // ✅ DURABILITY: Copy patient to deletedPatients collection
+      const deletedPatientRef = doc(collection(this.firestore, 'deletedPatients'));
+      batch.set(deletedPatientRef, {
+        ...(patientData as any),
+        originalId: patientDocId,
+        deletedAt: Timestamp.now(),
+        restorable: true
+      });
+
+      // ✅ DURABILITY: Copy all medical records to deletedRecords collection
+      snap.docs.forEach((d: any) => {
+        const deletedRecordRef = doc(collection(this.firestore, 'deletedRecords'));
+        batch.set(deletedRecordRef, {
+          ...(d.data() as any),
+          originalId: d.id,
+          deletedAt: Timestamp.now(),
+          restorable: true
+        });
+        // Delete from medicalRecords
+        batch.delete(d.ref);
+      });
+
+      // Delete from patients
       batch.delete(doc(this.firestore, 'patients', patientDocId));
-      snap.docs.forEach((d: any) => { batch.delete(d.ref); });
+
+      // Audit log
       const auditRef = doc(collection(this.firestore, 'auditLog'));
       batch.set(auditRef, {
         action: 'DELETE_PATIENT',
         patientId: patientId,
+        patientName: `${patientData?.['lastName']}, ${patientData?.['firstName']}`,
         recordsDeleted: snap.size,
+        deletedPatientRef: deletedPatientRef.id,
         performedAt: Timestamp.now(),
-        status: 'SUCCESS'
+        status: 'SUCCESS',
+        note: 'Data moved to deletedPatients and deletedRecords — restorable'
       });
+
       await batch.commit();
-      console.log('✅ ATOMICITY: Patient + records deleted atomically');
+      console.log('✅ ATOMICITY + DURABILITY: Patient moved to deletedPatients atomically');
     } catch (err) {
       console.error('❌ ATOMICITY FAILED — batch rolled back:', err);
       throw err;
@@ -368,8 +404,6 @@ export class FirestoreService {
     const q = query(collection(this.firestore, 'medicalRecords'), orderBy('createdAt', 'desc'));
     const snap = await this.getDocsWithOffline(q);
     const all = snap.docs.map((d: any) => ({ id: d.id, ...(d.data() as any) } as MedicalRecord));
-    console.log("ALL FIREBASE RECORDS:", all);
-    console.log("LOOKING FOR patientId:", patientId);
     return all;
   }
 
@@ -386,7 +420,26 @@ export class FirestoreService {
   }
 
   async deleteMedicalRecord(id: string): Promise<void> {
-    await deleteDoc(doc(this.firestore, 'medicalRecords', id));
+    try {
+      // ✅ DURABILITY: Copy to deletedRecords before deleting
+      const recordSnap = await getDoc(doc(this.firestore, 'medicalRecords', id));
+      if (recordSnap.exists()) {
+        const batch = writeBatch(this.firestore);
+        const deletedRecordRef = doc(collection(this.firestore, 'deletedRecords'));
+        batch.set(deletedRecordRef, {
+          ...(recordSnap.data() as any),
+          originalId: id,
+          deletedAt: Timestamp.now(),
+          restorable: true
+        });
+        batch.delete(doc(this.firestore, 'medicalRecords', id));
+        await batch.commit();
+        console.log('✅ DURABILITY: Medical record moved to deletedRecords');
+      }
+    } catch (err) {
+      console.error('Delete medical record error:', err);
+      throw err;
+    }
   }
 
   async updateMedicalRecord(id: string, data: any): Promise<void> {
