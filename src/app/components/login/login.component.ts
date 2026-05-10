@@ -8,104 +8,102 @@ import { AuthService } from '../../services/auth.service';
   standalone: true,
   imports: [FormsModule, CommonModule],
   template: `
-    <div class="login-page">
-      <div class="login-wrapper">
+    <div style="display:flex;height:100vh;background:#f0f4fb;">
 
-        <div class="logo-area">
-          <div class="logo-circle"><span>+</span></div>
-          <h1>DPRMS</h1>
-          <p>Digital Patient Record Management System</p>
-          <div class="health-center-name">Barangay Health Center</div>
+      <!-- Left Panel -->
+      <div style="width:50%;min-height:100vh;background:linear-gradient(160deg,#1a56a0,#2f80ed);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 32px;">
+        <div style="margin-bottom:20px;">
+  <svg width="80" height="80" viewBox="0 0 42 42" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 3px 12px rgba(86,204,242,0.70));">
+    <defs>
+      <linearGradient id="shieldGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%"   stop-color="#56ccf2"/>
+        <stop offset="60%"  stop-color="#2f80ed"/>
+        <stop offset="100%" stop-color="#1a56a0"/>
+      </linearGradient>
+    </defs>
+    <circle cx="21" cy="21" r="20" fill="none" stroke="#56ccf2" stroke-width="0.8" opacity="0.4"/>
+    <path d="M21 4 L35 11 L35 24 Q35 34 21 38 Q7 34 7 24 L7 11 Z" fill="url(#shieldGrad2)" stroke="#56ccf2" stroke-width="0.8"/>
+    <path d="M21 8 L32 14 L32 23 Q32 31 21 35 Q10 31 10 23 L10 14 Z" fill="#072248" opacity="0.3"/>
+    <rect x="18.5" y="14" width="5" height="14" rx="2.5" fill="white"/>
+    <rect x="14" y="18.5" width="14" height="5" rx="2.5" fill="white"/>
+    <line x1="21" y1="0.5" x2="21" y2="3" stroke="#56ccf2" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="38.5" y1="9" x2="36.5" y2="11" stroke="#56ccf2" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="3.5" y1="9" x2="5.5" y2="11" stroke="#2f9fd4" stroke-width="1.5" stroke-linecap="round"/>
+  </svg>
+</div>
+        <h1 style="color:white;font-size:28px;font-weight:700;margin:0 0 8px 0;letter-spacing:2px;">DPRMS</h1>
+        <p style="color:rgba(255,255,255,0.8);font-size:13px;text-align:center;margin:0 0 6px 0;">Digital Patient Record Management System</p>
+        <div style="color:rgba(255,255,255,0.6);font-size:12px;text-align:center;margin-bottom:24px;">Barangay Health Center</div>
+
+        <!-- Role Buttons -->
+        <div style="width:100%;display:flex;flex-direction:column;gap:10px;align-items:center;">
+          <button *ngFor="let r of roles"
+            (click)="selectRole(r.key)"
+            [style.background]="selectedRole === r.key ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.1)'"
+            [style.color]="selectedRole === r.key ? '#1a56a0' : 'rgba(255,255,255,0.8)'"
+            [style.border]="selectedRole === r.key ? '2px solid white' : '2px solid rgba(255,255,255,0.2)'"
+            class="role-portal-btn"
+            style="width:280px;padding:12px 20px;border-radius:12px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:12px;transition:all 0.2s;">
+            <span style="font-size:20px;">{{ r.icon }}</span>
+            <span>{{ r.label }} Portal</span>
+          </button>
         </div>
 
-        <!-- Role Selector Tabs -->
-        <div class="role-tabs">
-          <button class="role-tab" [class.active]="selectedRole === 'staff'" (click)="selectRole('staff')">
-            <span class="role-tab-icon">👤</span>
-            <span class="role-tab-label">Staff</span>
-          </button>
-          <button class="role-tab" [class.active]="selectedRole === 'admin'" (click)="selectRole('admin')">
-            <span class="role-tab-icon">🛡️</span>
-            <span class="role-tab-label">Admin</span>
-          </button>
-          <button class="role-tab" [class.active]="selectedRole === 'doctor'" (click)="selectRole('doctor')">
-            <span class="role-tab-icon">🩺</span>
-            <span class="role-tab-label">Doctor</span>
-          </button>
+        <div style="margin-top:24px;color:rgba(255,255,255,0.4);font-size:11px;text-align:center;">
+          DPRMS &copy; {{ currentYear }}
         </div>
+      </div>
 
-        <div class="login-card">
-          <h2>{{ roleLabel }} Login</h2>
-          <div class="sub">Sign in to access the {{ roleLabel }} portal</div>
+      <!-- Right Panel -->
+      <div style="width:50%;min-height:100vh;background:white;display:flex;align-items:center;justify-content:center;padding:40px;">
+        <div style="width:100%;max-width:420px;">
 
-          <div *ngIf="error" class="alert alert-danger">⚠️ {{ error }}</div>
-          <div *ngIf="roleWarning" class="alert alert-info">⚠️ {{ roleWarning }}</div>
-
-          <div class="form-group">
-            <label>Email Address</label>
-            <input type="email" [(ngModel)]="email"
-              placeholder="Enter your email" [disabled]="loading" />
-          </div>
-          <div class="form-group">
-            <label>Password</label>
-            <input type="password" [(ngModel)]="password"
-              placeholder="Enter your password" [disabled]="loading"
-              (keyup.enter)="login()" />
+          <div style="margin-bottom:32px;">
+            <h2 style="font-size:24px;font-weight:700;color:#1a56a0;margin:0 0 6px 0;">{{ roleLabel }} Login</h2>
+            <p style="color:#888;font-size:14px;margin:0;">Sign in to access the {{ roleLabel }} portal</p>
           </div>
 
-          <button class="btn btn-primary w-100" (click)="login()" [disabled]="loading"
-            style="width:100%; padding:13px; font-size:15px; justify-content:center;">
+          <div *ngIf="error" style="background:#fdecea;border:1px solid #f5c6cb;color:#c0392b;padding:12px 16px;border-radius:10px;font-size:13px;margin-bottom:16px;">
+            ⚠️ {{ error }}
+          </div>
+          <div *ngIf="roleWarning" style="background:#e8f4fd;border:1px solid #b8d4f0;color:#1a56a0;padding:12px 16px;border-radius:10px;font-size:13px;margin-bottom:16px;">
+            ⚠️ {{ roleWarning }}
+          </div>
+
+          <div style="margin-bottom:16px;">
+            <label style="font-size:13px;font-weight:600;color:#444;display:block;margin-bottom:6px;">Email Address</label>
+            <input type="email" [(ngModel)]="email" placeholder="Enter your email"
+              [disabled]="loading"
+              style="width:100%;padding:12px 16px;border:1.5px solid #dde3f0;border-radius:10px;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;background:#f8faff;" />
+          </div>
+
+          <div style="margin-bottom:24px;">
+            <label style="font-size:13px;font-weight:600;color:#444;display:block;margin-bottom:6px;">Password</label>
+            <div style="position:relative;">
+              <input [type]="showPassword ? 'text' : 'password'" [(ngModel)]="password"
+                placeholder="Enter your password"
+                [disabled]="loading" (keyup.enter)="login()"
+                style="width:100%;padding:12px 48px 12px 16px;border:1.5px solid #dde3f0;border-radius:10px;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;background:#f8faff;" />
+              <button type="button" (click)="showPassword = !showPassword"
+                style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;padding:0;line-height:1;">
+                {{ showPassword ? '🙈' : '👁️' }}
+              </button>
+            </div>
+          </div>
+
+          <button (click)="login()" [disabled]="loading"
+            style="width:100%;padding:14px;background:linear-gradient(135deg,#2f80ed,#1a56a0);color:white;border:none;border-radius:12px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;">
             <span *ngIf="loading">🔄 Signing in...</span>
             <span *ngIf="!loading">🔐 Sign In as {{ roleLabel }}</span>
           </button>
-        </div>
 
-        <div class="footer-note">
-          For authorized health center personnel only &bull; DPRMS &copy; {{ currentYear }}
+          <div style="margin-top:24px;padding:14px 16px;background:#f0f4fb;border-radius:10px;font-size:12px;color:#888;text-align:center;">
+            For authorized health center personnel only
+          </div>
         </div>
       </div>
     </div>
-  `,
-  styles: [`
-    .role-tabs {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 20px;
-      width: 100%;
-    }
-    .role-tab {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 6px;
-      padding: 14px 8px;
-      border-radius: 14px;
-      border: 2px solid rgba(255,255,255,0.25);
-      background: rgba(255,255,255,0.10);
-      color: rgba(255,255,255,0.75);
-      cursor: pointer;
-      font-family: inherit;
-      transition: all 0.22s cubic-bezier(0.4,0,0.2,1);
-      backdrop-filter: blur(6px);
-    }
-    .role-tab:hover {
-      background: rgba(255,255,255,0.22);
-      border-color: rgba(255,255,255,0.55);
-      color: white;
-      transform: translateY(-3px);
-      box-shadow: 0 8px 24px rgba(0,0,0,0.2);
-    }
-    .role-tab.active {
-      background: rgba(255,255,255,0.95);
-      border-color: white;
-      color: #1a56a0;
-      transform: translateY(-3px);
-      box-shadow: 0 8px 28px rgba(0,0,0,0.25);
-    }
-    .role-tab-icon { font-size: 22px; }
-    .role-tab-label { font-size: 12px; font-weight: 700; letter-spacing: 0.5px; }
-  `]
+  `
 })
 export class LoginComponent {
   private authService = inject(AuthService);
@@ -115,8 +113,15 @@ export class LoginComponent {
   error = '';
   roleWarning = '';
   loading = false;
+  showPassword = false;
   selectedRole: 'staff' | 'admin' | 'doctor' = 'staff';
   currentYear = new Date().getFullYear();
+
+  roles = [
+    { key: 'staff' as const, label: 'Staff', icon: '👤' },
+    { key: 'admin' as const, label: 'Admin', icon: '🛡️' },
+    { key: 'doctor' as const, label: 'Doctor', icon: '🩺' }
+  ];
 
   get roleLabel(): string {
     return { staff: 'Staff', admin: 'Admin', doctor: 'Doctor' }[this.selectedRole];
