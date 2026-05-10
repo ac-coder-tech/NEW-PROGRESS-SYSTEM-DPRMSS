@@ -1,0 +1,19 @@
+# Angular
+/dist
+/node_modules
+/.angular
+
+# Firebase
+.firebase/
+
+# Environment (contains API keys - don't commit to public repos)
+# src/environments/environment.ts
+# src/environments/environment.prod.ts
+
+# Editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
