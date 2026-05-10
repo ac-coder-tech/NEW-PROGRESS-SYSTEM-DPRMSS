@@ -76,18 +76,19 @@ import { CommonModule } from '@angular/common';
         </a>
       </nav>
 
-      <div class="sidebar-footer">
-        <div class="footer-avatar">{{ initials }}</div>
-        <div class="footer-text">
-          <div class="staff-name">{{ authService.getStaffName() }}</div>
-          <div class="staff-role">{{ authService.getStaffRole() }}</div>
-        </div>
-        <button class="btn-logout" (click)="logout()">
-          <span class="nav-icon">🚪</span>
-          <span class="nav-label">Logout</span>
-        </button>
-      </div>
+     <div class="sidebar-footer" style="flex-direction:column;align-items:flex-start;gap:10px;">
+  <div style="display:flex;align-items:center;gap:12px;width:100%;">
+    <div class="footer-avatar">{{ initials }}</div>
+    <div class="footer-text">
+      <div class="staff-name">{{ authService.getStaffName() }}</div>
+      <div class="staff-role">{{ authService.getStaffRole() }}</div>
     </div>
+  </div>
+  <button class="btn-logout" (click)="logout()" style="width:100%;">
+    <span class="nav-icon">🚪</span>
+    <span class="nav-label">Logout</span>
+  </button>
+</div>
   `,
   styles: [`
     .dprms-logo-svg {

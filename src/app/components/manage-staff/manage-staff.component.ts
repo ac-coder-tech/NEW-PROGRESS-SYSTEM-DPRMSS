@@ -52,13 +52,30 @@ import { StaffUser } from '../../models/models';
                 </select>
               </div>
               <div class="form-group">
-                <label>Password *</label>
-                <input type="password" [(ngModel)]="form.password" placeholder="Min 6 characters" />
-              </div>
-              <div class="form-group">
-                <label>Confirm Password *</label>
-                <input type="password" [(ngModel)]="form.confirmPassword" placeholder="Repeat password" />
-              </div>
+  <label>Password *</label>
+  <div style="position:relative;">
+    <input [type]="showPassword ? 'text' : 'password'" [(ngModel)]="form.password"
+      placeholder="Min 6 characters"
+      style="width:100%;padding:9px 40px 9px 13px;border:1.5px solid #c2dff5;border-radius:8px;font-size:14px;font-family:inherit;outline:none;background:linear-gradient(135deg,#f8fcff,#eef7fd);" />
+    <button type="button" (click)="showPassword = !showPassword"
+      style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;padding:0;line-height:1;">
+      {{ showPassword ? '🙈' : '👁️' }}
+    </button>
+  </div>
+</div>
+<div class="form-group">
+  <label>Confirm Password *</label>
+  <div style="position:relative;">
+    <input [type]="showConfirmPassword ? 'text' : 'password'" [(ngModel)]="form.confirmPassword"
+      placeholder="Repeat password"
+      style="width:100%;padding:9px 40px 9px 13px;border:1.5px solid #c2dff5;border-radius:8px;font-size:14px;font-family:inherit;outline:none;background:linear-gradient(135deg,#f8fcff,#eef7fd);" />
+    <button type="button" (click)="showConfirmPassword = !showConfirmPassword"
+      style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;padding:0;line-height:1;">
+      {{ showConfirmPassword ? '🙈' : '👁️' }}
+    </button>
+  </div>
+</div> 
+
               <button class="btn btn-primary w-100" (click)="addStaff()" [disabled]="saving"
                 style="width:100%;justify-content:center;">
                 {{ saving ? '⏳ Creating...' : '➕ Create Account' }}
@@ -112,6 +129,8 @@ export class ManageStaffComponent implements OnInit {
   today = new Date().toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   loading = true;
   saving = false;
+  showPassword = false;
+  showConfirmPassword = false;
   successMsg = '';
   errorMsg = '';
   staffList: StaffUser[] = [];
