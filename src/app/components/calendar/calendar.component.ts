@@ -45,7 +45,7 @@ import { Appointment } from '../../models/models';
                   <div class="day-num">{{ day.date.getDate() }}</div>
                   <div *ngFor="let appt of day.appointments" class="cal-event"
                     [title]="appt.patientName + ' - ' + appt.purpose">
-                    {{ appt.appointmentTime ? appt.appointmentTime + ' ' : '' }}{{ appt.patientName }}
+                  {{ appt.appointmentTime ? formatTime(appt.appointmentTime) + ' ' : '' }}{{ appt.patientName }}
                   </div>
                 </div>
               </div>
@@ -107,8 +107,7 @@ import { Appointment } from '../../models/models';
                   style="padding:10px;border:1px solid #eef2fb;border-radius:8px;margin-bottom:8px;">
                   <div style="font-weight:600;font-size:13.5px;">{{ a.patientName }}</div>
                   <div style="font-size:12px;color:#888;margin-top:2px;">
-                    {{ a.appointmentTime || '' }} &nbsp;|&nbsp; {{ a.purpose || 'No purpose' }}
-                  </div>
+                   {{ formatTime(a.appointmentTime) }} &nbsp;|&nbsp; {{ a.purpose || 'No purpose' }}
                   <div style="margin-top:6px;">
                     <span class="badge" [ngClass]="getStatusClass(a.status)">{{ a.status }}</span>
                   </div>
@@ -120,6 +119,7 @@ import { Appointment } from '../../models/models';
               </div>
             </div>
           </div>
+          </div> <!-- ✅ closes the 2fr 1fr grid -->
 
           <!-- All Upcoming Appointments -->
           <div class="card">
@@ -133,7 +133,7 @@ import { Appointment } from '../../models/models';
                 <tbody>
                   <tr *ngFor="let a of allAppointments">
                     <td>{{ a.appointmentDate }}</td>
-                    <td>{{ a.appointmentTime || '—' }}</td>
+                    <td>{{ formatTime(a.appointmentTime) }}</td>
                     <td>{{ a.patientName }}</td>
                     <td>{{ a.purpose || '—' }}</td>
                     <td><span class="badge" [ngClass]="getStatusClass(a.status)">{{ a.status }}</span></td>
@@ -304,4 +304,13 @@ export class CalendarComponent implements OnInit {
     appointmentTime: '', purpose: '', status: 'Scheduled', notes: ''
   };
 }
+  formatTime(time: string): string {
+  if (!time) return '—';
+  const [hourStr, minute] = time.split(':');
+  let hour = parseInt(hourStr, 10);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  hour = hour % 12 || 12;
+  return `${hour}:${minute} ${ampm}`;
+}
+
 }

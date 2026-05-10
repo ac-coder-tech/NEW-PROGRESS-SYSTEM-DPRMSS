@@ -98,7 +98,8 @@ import { Patient, Appointment } from '../../models/models';
                 </thead>
                 <tbody>
                   <tr *ngFor="let a of todayAppts">
-                    <td>{{ a.appointmentTime || '—' }}</td>
+                    <!-- ✅ NEW -->
+                    <td>{{ formatTime(a.appointmentTime) }}</td>
                     <td>{{ a.patientName }}</td>
                     <td>{{ a.purpose || '—' }}</td>
                     <td><span class="badge" [ngClass]="getStatusClass(a.status)">{{ a.status }}</span></td>
@@ -155,4 +156,13 @@ export class DashboardComponent implements OnInit {
       'badge-info': status === 'Scheduled'
     };
   }
+  
+  formatTime(time: string): string {
+  if (!time) return '—';
+  const [hourStr, minute] = time.split(':');
+  let hour = parseInt(hourStr, 10);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  hour = hour % 12 || 12;
+  return `${hour}:${minute} ${ampm}`;
+}
 }
