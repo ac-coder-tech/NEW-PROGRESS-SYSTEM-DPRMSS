@@ -1,3 +1,4 @@
+import { Router } from '@angular/router';
 import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -95,6 +96,9 @@ import { Appointment } from '../../models/models';
                   </button>
                   <button *ngIf="editingAppt" class="btn btn-secondary" (click)="cancelEdit()">✖ Cancel</button>
                 </div>
+                <button class="btn btn-secondary w-100" style="margin-top:10px;justify-content:center;" (click)="goToAllAppointments()">
+                  📋 View All Appointments
+                </button>
               </div>
 
               <!-- Selected Day Appointments -->
@@ -119,38 +123,6 @@ import { Appointment } from '../../models/models';
               </div>
             </div>
           </div>
-          </div> <!-- ✅ closes the 2fr 1fr grid -->
-
-          <!-- All Upcoming Appointments -->
-          <div class="card">
-            <div class="card-title">📋 All Appointments</div>
-            <div *ngIf="loadingAppts" class="loading"><div class="spinner"></div>Loading...</div>
-            <div *ngIf="!loadingAppts" class="table-responsive">
-              <table class="data-table">
-                <thead>
-                  <tr><th>Date</th><th>Time</th><th>Patient</th><th>Purpose</th><th>Status</th><th>Actions</th></tr>
-                </thead>
-                <tbody>
-                  <tr *ngFor="let a of allAppointments">
-                    <td>{{ a.appointmentDate }}</td>
-                    <td>{{ formatTime(a.appointmentTime) }}</td>
-                    <td>{{ a.patientName }}</td>
-                    <td>{{ a.purpose || '—' }}</td>
-                    <td><span class="badge" [ngClass]="getStatusClass(a.status)">{{ a.status }}</span></td>
-                    <td>
-                      <div class="d-flex gap-8">
-                        <button class="btn btn-secondary btn-sm" (click)="editAppointment(a)">✏️</button>
-                        <button class="btn btn-danger btn-sm" (click)="deleteAppointment(a)">🗑</button>
-                      </div>
-                    </td>
-                  </tr>
-                  <tr *ngIf="allAppointments.length === 0">
-                    <td colspan="6" class="text-center text-muted">No appointments found.</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
 
         </div>
       </div>
@@ -159,6 +131,7 @@ import { Appointment } from '../../models/models';
 })
 export class CalendarComponent implements OnInit {
   private db = inject(FirestoreService);
+  private router = inject(Router);
 
   today = new Date();
   todayStr = this.today.toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -196,14 +169,12 @@ export class CalendarComponent implements OnInit {
     const daysInMonth = new Date(this.viewYear, this.viewMonth + 1, 0).getDate();
     const days: any[] = [];
 
-    // Previous month fill
     const prevDays = new Date(this.viewYear, this.viewMonth, 0).getDate();
     for (let i = firstDay - 1; i >= 0; i--) {
       const d = new Date(this.viewYear, this.viewMonth - 1, prevDays - i);
       days.push({ date: d, inMonth: false, isToday: false, appointments: [] });
     }
 
-    // Current month
     for (let i = 1; i <= daysInMonth; i++) {
       const d = new Date(this.viewYear, this.viewMonth, i);
       const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -212,7 +183,6 @@ export class CalendarComponent implements OnInit {
       days.push({ date: d, inMonth: true, isToday, appointments: appts });
     }
 
-    // Next month fill
     const remaining = 42 - days.length;
     for (let i = 1; i <= remaining; i++) {
       const d = new Date(this.viewYear, this.viewMonth + 1, i);
@@ -223,10 +193,10 @@ export class CalendarComponent implements OnInit {
   }
 
   selectDay(day: any) {
-  this.selectedDay = day;
-  const d = day.date;
-  this.form.appointmentDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-}
+    this.selectedDay = day;
+    const d = day.date;
+    this.form.appointmentDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
 
   prevMonth() {
     if (this.viewMonth === 0) { this.viewMonth = 11; this.viewYear--; }
@@ -244,6 +214,10 @@ export class CalendarComponent implements OnInit {
     this.viewYear = this.today.getFullYear();
     this.viewMonth = this.today.getMonth();
     this.buildCalendar();
+  }
+
+  goToAllAppointments() {
+    this.router.navigate(['/all-appointments']);
   }
 
   editAppointment(a: Appointment) {
@@ -298,19 +272,19 @@ export class CalendarComponent implements OnInit {
   clearAlerts() { this.successMsg = ''; this.errorMsg = ''; }
 
   emptyForm() {
-  return {
-    patientName: '', patientId: '',
-    appointmentDate: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })(),
-    appointmentTime: '', purpose: '', status: 'Scheduled', notes: ''
-  };
-}
-  formatTime(time: string): string {
-  if (!time) return '—';
-  const [hourStr, minute] = time.split(':');
-  let hour = parseInt(hourStr, 10);
-  const ampm = hour >= 12 ? 'PM' : 'AM';
-  hour = hour % 12 || 12;
-  return `${hour}:${minute} ${ampm}`;
-}
+    return {
+      patientName: '', patientId: '',
+      appointmentDate: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })(),
+      appointmentTime: '', purpose: '', status: 'Scheduled', notes: ''
+    };
+  }
 
+  formatTime(time: string): string {
+    if (!time) return '—';
+    const [hourStr, minute] = time.split(':');
+    let hour = parseInt(hourStr, 10);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    hour = hour % 12 || 12;
+    return `${hour}:${minute} ${ampm}`;
+  }
 }

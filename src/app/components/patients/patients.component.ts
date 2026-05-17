@@ -1,4 +1,4 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { Component, inject, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -6,6 +6,7 @@ import { SidebarComponent } from '../shared/sidebar.component';
 import { FirestoreService } from '../../services/firestore.service';
 import { AuthService } from '../../services/auth.service';
 import { Patient } from '../../models/models';
+import { Firestore, collection, query, orderBy, onSnapshot } from '@angular/fire/firestore';
 
 @Component({
   selector: 'app-patients',
@@ -21,11 +22,9 @@ import { Patient } from '../../models/models';
         </div>
         <div class="page-content">
 
-          <!-- Alerts -->
           <div *ngIf="successMsg" class="alert alert-success">✅ {{ successMsg }}</div>
           <div *ngIf="errorMsg" class="alert alert-danger">⚠️ {{ errorMsg }}</div>
 
-          <!-- Toggle: List / Register -->
           <div class="card" style="padding:12px 16px;margin-bottom:18px;">
             <div class="d-flex gap-10">
               <button class="btn" [class.btn-primary]="view==='list'" [class.btn-secondary]="view!='list'"
@@ -38,11 +37,12 @@ import { Patient } from '../../models/models';
 
           <!-- PATIENT LIST -->
           <div *ngIf="view === 'list'" class="card">
-            <div class="card-title">👥 All Registered Patients</div>
+            <div class="card-title">👥 All Registered Patients
+              <span *ngIf="isLive" style="font-size:11px;color:#27ae60;margin-left:8px;">🟢 Live</span>
+            </div>
             <div class="search-bar" style="margin-bottom:14px;">
               <input type="text" [(ngModel)]="searchTerm" placeholder="Search name or patient ID..."
                 (input)="filterPatients()" />
-              <button class="btn btn-secondary" (click)="loadPatients()">🔄 Refresh</button>
             </div>
             <div *ngIf="loadingList" class="loading"><div class="spinner"></div>Loading patients...</div>
             <div *ngIf="!loadingList">
@@ -87,6 +87,11 @@ import { Patient } from '../../models/models';
           <div *ngIf="view === 'register' || view === 'edit'" class="card">
             <div class="card-title">{{ view === 'edit' ? '✏️ Edit Patient' : '➕ Register New Patient' }}</div>
 
+            <!-- Duplicate Warning -->
+            <div *ngIf="duplicateWarning" class="alert alert-danger" style="margin-bottom:14px;">
+              ⚠️ {{ duplicateWarning }}
+            </div>
+
             <div class="form-section-title">👤 Personal Information</div>
             <div class="form-grid-3">
               <div class="form-group">
@@ -120,7 +125,7 @@ import { Patient } from '../../models/models';
                 </select>
               </div>
               <div class="form-group">
-                <label>Civil Status</label>
+                <label>Civil Status *</label>
                 <select [(ngModel)]="form.civilStatus">
                   <option value="Single">Single</option>
                   <option value="Married">Married</option>
@@ -133,11 +138,11 @@ import { Patient } from '../../models/models';
             <div class="form-section-title">📞 Contact Information</div>
             <div class="form-grid">
               <div class="form-group">
-                <label>Address</label>
+                <label>Address *</label>
                 <input type="text" [(ngModel)]="form.address" placeholder="Purok 1, Barangay..." />
               </div>
               <div class="form-group">
-                <label>Contact Number</label>
+                <label>Contact Number *</label>
                 <input type="text" [(ngModel)]="form.contactNumber" placeholder="09XX-XXX-XXXX" />
               </div>
               <div class="form-group">
@@ -153,7 +158,7 @@ import { Patient } from '../../models/models';
             <div class="form-section-title">🏥 Medical Information</div>
             <div class="form-grid">
               <div class="form-group">
-                <label>Blood Type</label>
+                <label>Blood Type *</label>
                 <select [(ngModel)]="form.bloodType">
                   <option *ngFor="let bt of bloodTypes" [value]="bt">{{ bt }}</option>
                 </select>
@@ -194,11 +199,11 @@ import { Patient } from '../../models/models';
     </div>
   `
 })
-export class PatientsComponent implements OnInit {
+export class PatientsComponent implements OnInit, OnDestroy {
   private db = inject(FirestoreService);
+  private firestore = inject(Firestore);
 
   view: 'list' | 'register' | 'edit' = 'list';
-
   today = new Date().toLocaleDateString('en-PH', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
   });
@@ -207,16 +212,50 @@ export class PatientsComponent implements OnInit {
   saving = false;
   successMsg = '';
   errorMsg = '';
+  duplicateWarning = '';
   searchTerm = '';
   allPatients: Patient[] = [];
   filteredPatients: Patient[] = [];
   deleteTarget: Patient | null = null;
   editingId: string | null = null;
+  isLive = false;
   bloodTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown'];
   form: any = this.emptyForm();
 
-  async ngOnInit() {
-    await this.loadPatients();
+  private unsubscribePatients: (() => void) | null = null;
+
+  ngOnInit() {
+    this.startRealtimeListener();
+  }
+
+  ngOnDestroy() {
+    if (this.unsubscribePatients) {
+      this.unsubscribePatients();
+    }
+  }
+
+  startRealtimeListener() {
+    this.loadingList = true;
+    const q = query(
+      collection(this.firestore, 'patients'),
+      orderBy('createdAt', 'desc')
+    );
+
+    this.unsubscribePatients = onSnapshot(q,
+      (snapshot) => {
+        this.allPatients = snapshot.docs.map(d => ({
+          id: d.id,
+          ...(d.data() as any)
+        } as Patient));
+        this.filterPatients();
+        this.loadingList = false;
+        this.isLive = true;
+      },
+      (error) => {
+        console.warn('Snapshot error:', error);
+        this.loadPatients();
+      }
+    );
   }
 
   async loadPatients() {
@@ -245,6 +284,7 @@ export class PatientsComponent implements OnInit {
   openRegisterForm() {
     this.form = this.emptyForm();
     this.editingId = null;
+    this.duplicateWarning = '';
     this.view = 'register';
     this.clearAlerts();
   }
@@ -252,6 +292,7 @@ export class PatientsComponent implements OnInit {
   editPatient(p: Patient) {
     this.form = { ...p };
     this.editingId = p.id!;
+    this.duplicateWarning = '';
     this.view = 'edit';
     this.clearAlerts();
   }
@@ -263,46 +304,50 @@ export class PatientsComponent implements OnInit {
   }
 
   async savePatient() {
-  // ✅ CONSISTENCY: Validate all required fields before saving
-const patientData = { ...this.form };
-if (!patientData.lastName?.trim()) { this.errorMsg = '⚠️ Last Name is required!'; return; }
-if (!patientData.firstName?.trim()) { this.errorMsg = '⚠️ First Name is required!'; return; }
-if (!patientData.dateOfBirth) { this.errorMsg = '⚠️ Date of Birth is required!'; return; }
-if (!patientData.gender) { this.errorMsg = '⚠️ Gender is required!'; return; }
-if (!patientData.civilStatus) { this.errorMsg = '⚠️ Civil Status is required!'; return; }
-if (!patientData.address?.trim()) { this.errorMsg = '⚠️ Address is required!'; return; }
-if (!patientData.contactNumber?.trim()) { this.errorMsg = '⚠️ Contact Number is required!'; return; }
-if (!patientData.bloodType || patientData.bloodType === 'Unknown') { this.errorMsg = '⚠️ Please select a Blood Type!'; return; }
-const age = this.db.calcAge(patientData.dateOfBirth);
-if (age < 0 || age > 150) { this.errorMsg = '⚠️ Invalid Date of Birth!'; return; }
+    const patientData = { ...this.form };
+    this.duplicateWarning = '';
+
+    if (!patientData.lastName?.trim()) { this.errorMsg = '⚠️ Last Name is required!'; return; }
+    if (!patientData.firstName?.trim()) { this.errorMsg = '⚠️ First Name is required!'; return; }
+    if (!patientData.dateOfBirth) { this.errorMsg = '⚠️ Date of Birth is required!'; return; }
+    if (!patientData.gender) { this.errorMsg = '⚠️ Gender is required!'; return; }
+    if (!patientData.civilStatus) { this.errorMsg = '⚠️ Civil Status is required!'; return; }
+    if (!patientData.address?.trim()) { this.errorMsg = '⚠️ Address is required!'; return; }
+    if (!patientData.contactNumber?.trim()) { this.errorMsg = '⚠️ Contact Number is required!'; return; }
+    if (!patientData.bloodType || patientData.bloodType === 'Unknown') { this.errorMsg = '⚠️ Please select a Blood Type!'; return; }
+    const age = this.db.calcAge(patientData.dateOfBirth);
+    if (age < 0 || age > 150) { this.errorMsg = '⚠️ Invalid Date of Birth!'; return; }
+
+    // ✅ Duplicate check — only on new registration, not on edit
+    if (this.view === 'register') {
+      const duplicate = this.allPatients.find(p =>
+        p.firstName?.toLowerCase().trim() === patientData.firstName?.toLowerCase().trim() &&
+        p.lastName?.toLowerCase().trim() === patientData.lastName?.toLowerCase().trim() &&
+        p.dateOfBirth === patientData.dateOfBirth
+      );
+      if (duplicate) {
+        this.duplicateWarning = `Patient already exists! "${duplicate.lastName}, ${duplicate.firstName}" is already registered as ${duplicate.patientId}.`;
+        return;
+      }
+    }
 
     this.saving = true;
     this.clearAlerts();
 
     try {
       if (this.view === 'edit' && this.editingId) {
-        // ✅ ISOLATION: Update uses transaction internally
         await this.db.updatePatient(this.editingId, this.form);
         this.successMsg = 'Patient updated successfully!';
       } else {
-        // ✅ ATOMICITY: Generate ID + save patient + audit log atomically
         const patientId = await this.db.generatePatientId();
         const fullPatient = { ...this.form, patientId };
-
         const docId = await this.db.addPatientAtomic(fullPatient);
-
-        // ✅ DURABILITY: Verify data was actually saved
         await this.db.verifyPatientSaved(docId);
-
         this.successMsg = `Patient registered! ID: ${patientId}`;
       }
-
-      await this.loadPatients();
       this.view = 'list';
-
     } catch (e) {
       console.error('SAVE ERROR:', e);
-      // ✅ ATOMICITY: If anything failed, nothing was saved
       this.errorMsg = 'Failed to save patient. Transaction was rolled back.';
     } finally {
       this.saving = false;
@@ -315,24 +360,15 @@ if (age < 0 || age > 150) { this.errorMsg = '⚠️ Invalid Date of Birth!'; ret
 
   async deletePatient() {
     if (!this.deleteTarget?.id || !this.deleteTarget?.patientId) return;
-
     this.saving = true;
-
     try {
-      // ✅ ATOMICITY: Delete patient + all records atomically via batch
-      await this.db.deletePatientAtomic(
-        this.deleteTarget.id,
-        this.deleteTarget.patientId
-      );
+      await this.db.deletePatientAtomic(this.deleteTarget.id, this.deleteTarget.patientId);
       this.successMsg = 'Patient and all records deleted successfully.';
       this.deleteTarget = null;
-      await this.loadPatients();
     } catch (e) {
       console.error(e);
-      // ✅ ATOMICITY: If batch failed, nothing was deleted
       this.errorMsg = 'Failed to delete. Transaction was rolled back.';
     }
-
     this.saving = false;
   }
 
@@ -342,10 +378,7 @@ if (age < 0 || age > 150) { this.errorMsg = '⚠️ Invalid Date of Birth!'; ret
     return d.toLocaleDateString('en-PH');
   }
 
-  clearAlerts() {
-    this.successMsg = '';
-    this.errorMsg = '';
-  }
+  clearAlerts() { this.successMsg = ''; this.errorMsg = ''; this.duplicateWarning = ''; }
 
   emptyForm() {
     return {

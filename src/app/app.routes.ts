@@ -32,6 +32,11 @@ export const routes: Routes = [
         loadComponent: () => import('./components/calendar/calendar.component').then(m => m.CalendarComponent)
       },
       {
+        path: 'all-appointments',
+        canActivate: [roleGuard(['staff'])],
+        loadComponent: () => import('./components/calendar/all-appointments.component').then(m => m.AllAppointmentsComponent)
+      },
+      {
         path: 'manage-staff',
         canActivate: [roleGuard(['admin'])],
         loadComponent: () => import('./components/manage-staff/manage-staff.component').then(m => m.ManageStaffComponent)
